@@ -8,6 +8,7 @@ import {
     PITCH_RANGE,
     VoiceOption 
 } from '../constants/voices';
+import AudioPreview from './AudioPreview';
 
 interface FormState {
     japaneseText: string;
@@ -17,13 +18,14 @@ interface FormState {
 }
 
 export default function TTSForm() {
-    // Initialize form state with default values
     const [formState, setFormState] = useState<FormState>({
         japaneseText: '',
         selectedVoices: DEFAULT_SETTINGS.selectedVoices,
         speed: DEFAULT_SETTINGS.speed,
         pitch: DEFAULT_SETTINGS.pitch
     });
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     // Load saved settings from localStorage on component mount
     useEffect(() => {
@@ -54,8 +56,63 @@ export default function TTSForm() {
     // Handle form submission
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        // We'll implement API call later
-        console.log('Form submitted:', formState);
+        
+        if (!formState.japaneseText.trim()) {
+            setError('Please enter some text');
+            return;
+        }
+        
+        if (formState.selectedVoices.length === 0) {
+            setError('Please select at least one voice');
+            return;
+        }
+
+        setError(null);
+        setIsGenerating(true);
+
+        try {
+            // Generate audio for each selected voice
+            for (const voiceId of formState.selectedVoices) {
+                const response = await fetch('/api/synthesize', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        text: formState.japaneseText,
+                        voiceId,
+                        speed: formState.speed,
+                        pitch: formState.pitch,
+                    }),
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to generate audio');
+                }
+
+                // Get the blob from the response
+                const blob = await response.blob();
+                
+                // Create filename from text and voice
+                const voiceName = JAPANESE_VOICES.find(v => v.id === voiceId)?.name || voiceId;
+                const shortText = formState.japaneseText.slice(0, 30).replace(/[/\\?%*:|"<>]/g, '-');
+                const fileName = `${shortText}_${voiceName}.mp3`;
+
+                // Create and trigger download
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            }
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to generate audio');
+        } finally {
+            setIsGenerating(false);
+        }
     };
 
     return (
@@ -72,7 +129,7 @@ export default function TTSForm() {
                         ...prev,
                         japaneseText: e.target.value
                     }))}
-                    className="w-full h-32 p-2 border rounded-md border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full h-32 p-2 border rounded-md border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-800"
                     placeholder="Enter Japanese text here..."
                 />
             </div>
@@ -83,24 +140,34 @@ export default function TTSForm() {
                 {Object.entries(groupedVoices).map(([type, voices]) => (
                     <div key={type} className="space-y-2">
                         <h4 className="font-medium text-gray-600">{type} Voices</h4>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {voices.map(voice => (
-                                <label key={voice.id} className="flex items-center space-x-2">
-                                    <input
-                                        type="checkbox"
-                                        checked={formState.selectedVoices.includes(voice.id)}
-                                        onChange={(e) => {
-                                            setFormState(prev => ({
-                                                ...prev,
-                                                selectedVoices: e.target.checked
-                                                    ? [...prev.selectedVoices, voice.id]
-                                                    : prev.selectedVoices.filter(id => id !== voice.id)
-                                            }));
-                                        }}
-                                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                    />
-                                    <span className="text-gray-700">{voice.name} ({voice.gender})</span>
-                                </label>
+                                <div key={voice.id} className="space-y-2">
+                                    <label className="flex items-center space-x-2">
+                                        <input
+                                            type="checkbox"
+                                            checked={formState.selectedVoices.includes(voice.id)}
+                                            onChange={(e) => {
+                                                setFormState(prev => ({
+                                                    ...prev,
+                                                    selectedVoices: e.target.checked
+                                                        ? [...prev.selectedVoices, voice.id]
+                                                        : prev.selectedVoices.filter(id => id !== voice.id)
+                                                }));
+                                            }}
+                                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        />
+                                        <span className="text-gray-700">{voice.name} ({voice.gender})</span>
+                                    </label>
+                                    {formState.selectedVoices.includes(voice.id) && (
+                                        <AudioPreview
+                                            voiceId={voice.id}
+                                            text={formState.japaneseText}
+                                            speed={formState.speed}
+                                            pitch={formState.pitch}
+                                        />
+                                    )}
+                                </div>
                             ))}
                         </div>
                     </div>
@@ -147,12 +214,20 @@ export default function TTSForm() {
                 />
             </div>
 
+            {/* Error Display */}
+            {error && (
+                <div className="text-red-500 text-sm">
+                    {error}
+                </div>
+            )}
+
             {/* Submit Button */}
             <button
                 type="submit"
-                className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors"
+                disabled={isGenerating}
+                className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-                Generate Audio
+                {isGenerating ? 'Generating Audio...' : 'Generate Audio'}
             </button>
         </form>
     );

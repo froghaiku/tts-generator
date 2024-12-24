@@ -11,13 +11,13 @@ export const JAPANESE_VOICES: VoiceOption[] = [
     {
         id: 'ja-JP-Neural2-B',
         name: 'Neural2 B',
-        gender: 'MALE',
+        gender: 'FEMALE',
         languageCode: 'ja-JP'
     },
     {
         id: 'ja-JP-Neural2-C',
         name: 'Neural2 C',
-        gender: 'FEMALE',
+        gender: 'MALE',
         languageCode: 'ja-JP'
     },
     {
